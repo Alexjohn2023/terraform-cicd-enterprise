@@ -1,0 +1,61 @@
+name: CI — Terraform Validate
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_VERSION: "1.15.5"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    name: Format Check + Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive -no-color
+        continue-on-error: true
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -input=false -no-color
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      - name: Post CI results to PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fmt      = "${{ steps.fmt.outcome }}";
+            const init     = "${{ steps.init.outcome }}";
+            const validate = "${{ steps.validate.outcome }}";
+            const icon = (s) => s === "success" ? "✅" : "❌";
+            const body = `## CI Results\n| Check | Status |\n|-------|--------|\n| Format | ${icon(fmt)} ${fmt} |\n| Init | ${icon(init)} ${init} |\n| Validate | ${icon(validate)} ${validate} |\n\n*Triggered by @${{ github.actor }}*`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            })

@@ -1,0 +1,18 @@
+# Terraform — never commit these
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan-*
+crash.log
+
+# Secrets
+*.pem
+*.key
+secrets.tfvars
+*.auto.tfvars
+
+# OS
+.DS_Store
+Thumbs.db

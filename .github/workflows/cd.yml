@@ -1,0 +1,171 @@
+name: CD — Terraform Deploy
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.15.5"
+  AWS_REGION: "us-east-1"
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+
+  plan:
+    name: Plan — ${{ matrix.workspace }}
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        workspace: [dev, staging, prod]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - run: terraform init -input=false -no-color
+
+      - run: |
+          terraform workspace select ${{ matrix.workspace }} || \
+          terraform workspace new ${{ matrix.workspace }}
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -input=false 2>&1 | tee plan-output.txt
+        continue-on-error: true
+
+      - name: Post plan to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('plan-output.txt', 'utf8');
+            const out = plan.length > 60000 ? plan.substring(0,60000)+'\n[truncated]' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner, repo: context.repo.repo,
+              body: `### Plan: \`${{ matrix.workspace }}\`\n<details><summary>Show</summary>\n\n\`\`\`\n${out}\n\`\`\`\n</details>\nStatus: ${{ steps.plan.outcome }}`
+            })
+
+  deploy-dev:
+    name: Deploy → Dev
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      - run: terraform init -input=false -no-color
+      - run: terraform workspace select dev || terraform workspace new dev
+      - run: terraform apply -auto-approve -no-color -input=false
+
+  deploy-staging:
+    name: Deploy → Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      - run: terraform init -input=false -no-color
+      - run: terraform workspace select staging || terraform workspace new staging
+      - run: terraform apply -auto-approve -no-color -input=false
+
+  deploy-prod:
+    name: Deploy → Prod (Approval Required)
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      - run: terraform init -input=false -no-color
+      - run: terraform workspace select prod || terraform workspace new prod
+      - run: terraform apply -auto-approve -no-color -input=false
+
+  drift-detection:
+    name: Drift — ${{ matrix.workspace }}
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    strategy:
+      matrix:
+        workspace: [dev, staging, prod]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      - run: terraform init -input=false -no-color
+      - run: terraform workspace select ${{ matrix.workspace }}
+      - name: Check for drift
+        id: drift
+        run: |
+          terraform plan -detailed-exitcode -no-color -input=false
+          EXIT=$?
+          if [ $EXIT -eq 2 ]; then
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+          fi
+        continue-on-error: true
+      - name: Open issue if drift found
+        if: steps.drift.outputs.drift_detected == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: 'Drift detected — ${{ matrix.workspace }}',
+              body: 'Terraform found drift in `${{ matrix.workspace }}`. Investigate manual changes in AWS console.',
+              labels: ['drift', 'infrastructure']
+            })
