@@ -33,6 +33,8 @@ jobs:
       matrix:
         workspace: [dev, staging, prod]
       fail-fast: false
+    env:
+      TF_WORKSPACE: ${{ matrix.workspace }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,10 +50,6 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - run: terraform init -input=false -no-color
-
-      - run: |
-          terraform workspace select ${{ matrix.workspace }} || \
-          terraform workspace new ${{ matrix.workspace }}
 
       - name: Terraform Plan
         id: plan
@@ -76,6 +74,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     environment: dev
+    env:
+      TF_WORKSPACE: dev
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
@@ -87,7 +87,6 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
       - run: terraform init -input=false -no-color
-      - run: terraform workspace select dev || terraform workspace new dev
       - run: terraform apply -auto-approve -no-color -input=false
 
   deploy-staging:
@@ -95,6 +94,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: staging
+    env:
+      TF_WORKSPACE: staging
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
@@ -106,7 +107,6 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
       - run: terraform init -input=false -no-color
-      - run: terraform workspace select staging || terraform workspace new staging
       - run: terraform apply -auto-approve -no-color -input=false
 
   deploy-prod:
@@ -115,6 +115,8 @@ jobs:
     needs: deploy-staging
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: prod
+    env:
+      TF_WORKSPACE: prod
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
@@ -126,7 +128,6 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
       - run: terraform init -input=false -no-color
-      - run: terraform workspace select prod || terraform workspace new prod
       - run: terraform apply -auto-approve -no-color -input=false
 
   drift-detection:
@@ -137,6 +138,8 @@ jobs:
       matrix:
         workspace: [dev, staging, prod]
       fail-fast: false
+    env:
+      TF_WORKSPACE: ${{ matrix.workspace }}
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
@@ -148,7 +151,6 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
       - run: terraform init -input=false -no-color
-      - run: terraform workspace select ${{ matrix.workspace }}
       - name: Check for drift
         id: drift
         run: |
