@@ -24,6 +24,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        - name: Run Checkov security scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: terraform
+          soft_fail: false
+          output_format: cli
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
