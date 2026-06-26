@@ -214,3 +214,4 @@ Detailed step-by-step documentation including every command, every error, and ev
 # Testing Checkov in pipeline
 # Checkov scan test
  
+# Testing tfsec in pipeline
