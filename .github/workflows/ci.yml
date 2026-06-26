@@ -1,5 +1,5 @@
 cat > .github/workflows/ci.yml << 'EOF'
-name: CI — Terraform Validate
+name: CI Terraform Validate
 
 on:
   pull_request:
@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   validate:
-    name: Format Check + Validate
+    name: Format Check and Validate
     runs-on: ubuntu-latest
 
     steps:
