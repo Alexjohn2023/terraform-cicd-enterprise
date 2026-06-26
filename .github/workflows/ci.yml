@@ -1,9 +1,10 @@
-cat > .github/workflows/ci.yml << 'EOF'
 name: CI Terraform Validate
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -21,7 +22,6 @@ jobs:
   validate:
     name: Format Check and Validate
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -72,4 +72,3 @@ jobs:
               repo: context.repo.repo,
               body
             })
-EOF
