@@ -1,3 +1,4 @@
+cat > .github/workflows/ci.yml << 'EOF'
 name: CI — Terraform Validate
 
 on:
@@ -24,7 +25,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        - name: Run Checkov security scan
+
+      - name: Run Checkov security scan
         uses: bridgecrewio/checkov-action@master
         with:
           directory: .
@@ -47,6 +49,9 @@ jobs:
         id: init
         run: terraform init -input=false -no-color
 
+      - name: Select Workspace
+        run: terraform workspace select dev
+
       - name: Terraform Validate
         id: validate
         run: terraform validate -no-color
@@ -67,3 +72,4 @@ jobs:
               repo: context.repo.repo,
               body
             })
+EOF
