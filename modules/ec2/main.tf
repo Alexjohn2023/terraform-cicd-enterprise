@@ -42,7 +42,7 @@ resource "aws_security_group" "ec2_sg" {
   description = "Security group for ${var.environment} EC2 instances"
 
   ingress {
-    description = "SSH access — restricted to known IPs only"
+    description = "SSH access - restricted to known IPs only"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
