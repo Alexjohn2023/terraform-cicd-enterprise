@@ -49,9 +49,6 @@ jobs:
         id: init
         run: terraform init -input=false -no-color
 
-      - name: Select Workspace
-        run: terraform workspace select dev
-
       - name: Terraform Validate
         id: validate
         run: terraform validate -no-color
