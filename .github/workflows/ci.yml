@@ -34,6 +34,12 @@ jobs:
           soft_fail: false
           output_format: cli
 
+      - name: Run tfsec security scan
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: .
+          soft_fail: false
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
